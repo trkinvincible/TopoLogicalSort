@@ -10,6 +10,7 @@
 #include <chrono>
 #include <iterator>
 #include <algorithm>
+#include <queue>
 
 // RkUtil [START]
 //void* operator new(size_t size)
@@ -176,14 +177,98 @@ private:
     Vertex_Ptr<T> mV1;
     Vertex_Ptr<T> mV2;
 
+public:
     GETTER(mV1);
     GETTER(mV2);
 };
 
 }// RkUtil [END]
 
+template<typename T= std::string>
+class Command{
+public:
+    virtual void execute(const RkUtil::Graph_Ptr<T>& graph) = 0;
+    virtual bool API_1() = 0;
+    virtual std::vector<T> API_2() = 0;
+};
+
+template<typename T= std::string>
+class IterativeSolver : public Command<T>{
+public:
+    bool API_1() override{
+        return mIsCyclic;
+    }
+
+    std::vector<T> API_2() override{
+        std::vector<T> ret;
+        ret.reserve(mBuildOrder.size());
+        for (auto itr = mBuildOrder.rbegin(); itr != mBuildOrder.rend(); itr++){
+            ret.push_back((*itr)->Data());
+        }
+        return ret;
+    }
+
+public:
+
+    void execute(const RkUtil::Graph_Ptr<T>& graph) override {
+        std::cout << "IterativeSolver" << " in action!!" << std::endl;
+        std::tie(mIsCyclic, mBuildOrder) = isCyclic(graph);
+    }
+
+    std::tuple<bool, std::vector<RkUtil::Vertex_Ptr<T>>>
+    isCyclic(const RkUtil::Graph_Ptr<T>& graph){
+
+            bool isPossible = true;
+            std::unordered_map<RkUtil::Vertex_Ptr<T>, std::vector<RkUtil::Vertex_Ptr<T>>> adjList;
+            std::map<RkUtil::Vertex_Ptr<T>, int> indegree;
+            std::vector<RkUtil::Vertex_Ptr<T>> topologicalOrder;
+            static std::vector<RkUtil::Vertex_Ptr<T>> order;
+
+            for (const auto& e : graph->getmEdges()) {
+                adjList[e->getmV2()].push_back(e->getmV1());
+                indegree[e->getmV1()] += 1;
+            }
+
+            std::queue<RkUtil::Vertex_Ptr<T>> q;
+            for (const auto& v : graph->getmVertexes()) {
+              if (indegree[v] == 0) {
+                q.push(v);
+              }
+            }
+
+            int i = 0;
+            // Process until the Q becomes empty
+            while (!q.empty()) {
+              const auto node = q.front();
+              q.pop();
+              mBuildOrder.push_back(node);
+
+              auto itr = adjList.find(node);
+              if (itr != adjList.end()) {
+                for (const auto& neighbor : itr->second) {
+                  indegree[neighbor]--;
+
+                  if (indegree[neighbor] == 0) {
+                    q.push(neighbor);
+                  }
+                }
+              }
+            }
+
+            if (mBuildOrder.size() == graph->getmVertexes().size()) {
+              return std::make_tuple(true, mBuildOrder);
+            }
+
+            return std::make_tuple(true, order);
+    }
+
+private:
+    bool mIsCyclic;
+    std::vector<RkUtil::Vertex_Ptr<T>> mBuildOrder;
+};
+
 template<typename T = std::string>
-class RecursiveSolver {
+class RecursiveSolver : public Command<T>{
 
     struct Den{
     public:
@@ -215,8 +300,8 @@ public:
     std::vector<T> API_2() {
         std::vector<T> ret;
         ret.reserve(mBuildOrder.size());
-        for (const auto& i : mBuildOrder){
-            ret.push_back(i->Data());
+        for (auto itr = mBuildOrder.rbegin(); itr != mBuildOrder.rend(); itr++){
+            ret.push_back((*itr)->Data());
         }
         return ret;
     }
@@ -224,6 +309,7 @@ public:
 public:
 
     void execute(const RkUtil::Graph_Ptr<T>& graph) {
+        std::cout << "RecursiveSolver" << " in action!!" << std::endl;
         std::tie(mIsCyclic, mBuildOrder) = isCyclic(graph);
     }
 
@@ -276,7 +362,7 @@ class InputParser
 {
 public:
     // Strong exception safety
-    static RkUtil::Graph_Ptr<std::string> GenerateGraphFromFile(const std::string_view filename){
+    static RkUtil::Graph_Ptr<std::string> GenerateGraphFromFile(const std::string_view filename, bool recursive_method = true){
 
         RkUtil::Graph_Ptr<std::string> graph;
         std::ifstream input(filename.data());
@@ -300,8 +386,14 @@ public:
                             graph = std::make_unique<RkUtil::Graph<std::string>>();
 
                         auto neighboursstart = std::next(std::begin(v));
-                        std::vector<std::string> neighbours{neighboursstart, std::end(v)};
-                        graph->AddNode(std::move(v[0]), std::move(neighbours));
+                        if (recursive_method){
+                            std::vector<std::string> neighbours{neighboursstart, std::end(v)};
+                            graph->AddNode(std::move(v[0]), std::move(neighbours));
+                        }else{
+                            for (auto itr = neighboursstart; itr != v.end(); itr++){
+                                graph->addEdge(*itr, v[0]);
+                            }
+                        }
                     }
                 }
             }
@@ -326,22 +418,28 @@ int main(int argc, char *argv[])
         return 0;
     }
     const std::string_view input_file(argv[1]);
-    if (const RkUtil::Graph_Ptr<std::string> graph = InputParser::GenerateGraphFromFile(input_file);
+    if (const RkUtil::Graph_Ptr<std::string> graph = InputParser::GenerateGraphFromFile(input_file, false);
         graph->isValid()){
 
-        RecursiveSolver<std::string> r;
-        r.execute(graph);
+        int t = 0;
+        while(++t < 3){
 
-        {
-            // API 1
-            std::cout << "Was there any cyclic dependency? : " << std::boolalpha << r.API_1() << std::endl;
-            // API 2
-            std::cout << "A build order for the products : ";
-            const auto& v = r.API_2();
-            std::copy(v.begin(), v.end(), std::ostream_iterator<std::string>(std::cout, " "));
-            std::cout << std::endl;
-
-            return 0;
+            std::unique_ptr<Command<std::string>> c;
+            if (t == 1){
+                c.reset(new RecursiveSolver<std::string>());
+            }else{
+                c.reset(new IterativeSolver<std::string>());
+            }
+            c->execute(graph);
+            {
+                // API 1
+                std::cout << "Was there any cyclic dependency? : " << std::boolalpha << c->API_1() << std::endl;
+                // API 2
+                std::cout << "A build order for the products : ";
+                const auto& v = c->API_2();
+                std::copy(v.begin(), v.end(), std::ostream_iterator<std::string>(std::cout, " "));
+                std::cout << std::endl;
+            }
         }
     }
 
