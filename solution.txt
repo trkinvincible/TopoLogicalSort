@@ -70,6 +70,8 @@ class Edge;
 template<typename T>
 using Vertex_Ptr = std::shared_ptr<Vertex<T>>;
 template<typename T>
+using Vertex_WPtr = std::weak_ptr<Vertex<T>>;
+template<typename T>
 using Edge_Ptr = std::shared_ptr<Edge<T>>;
 template<typename T>
 class Graph;
@@ -130,7 +132,7 @@ class Vertex {
     using VertecesList = std::unordered_set<Vertex_Ptr<T>>;
 
 public:
-    Vertex(const T& data):mData(data) {}
+    Vertex(const T& data):mData(data) {    }
 
     static Vertex_Ptr<T> GetNewVertex(const T& data) noexcept{
         // make_shared have strong exception safety.
@@ -184,8 +186,8 @@ public:
     }
 
 private:
-    Vertex_Ptr<T> mV1;
-    Vertex_Ptr<T> mV2;
+    Vertex_WPtr<T> mV1;
+    Vertex_WPtr<T> mV2;
 
 public:
     GETTER(mV1);
@@ -218,14 +220,14 @@ public:
     std::vector<T> API_2() override {
         std::vector<T> ret;
         ret.reserve(mBuildOrder.size());
-        for (auto itr = mBuildOrder.rbegin(); itr != mBuildOrder.rend(); itr++){
-            ret.push_back((*itr)->Data());
+        for (auto itr = mBuildOrder.begin(); itr != mBuildOrder.end(); itr++){
+            ret.emplace_back((*itr)->Data());
         }
         return ret;
     }
 
     void execute(const RkUtil::Graph_Ptr<T>& graph) override {
-        //std::cout << "IterativeSolver in action!!" << std::endl;
+        std::cout << "IterativeSolver in action!!" << std::endl;
         std::tie(mIsCyclic, mBuildOrder) = isCyclic(graph);
     }
 
@@ -246,7 +248,7 @@ private:
             // O(V #no. of vertices# + E #no. of edges#)
             {
                 for (const auto& e : graph->getmEdges()) {
-                    depList[e->getmV2()].push_back(e->getmV1());
+                    depList[e->getmV2().lock()].push_back(e->getmV1().lock());
                 }
 
                 std::for_each(cachemVertexes.begin(), cachemVertexes.end(), [&q, &inDegree](const auto& v){
@@ -324,14 +326,14 @@ public:
     std::vector<T> API_2() override {
         std::vector<T> ret;
         ret.reserve(mBuildOrder.size());
-        for (auto itr = mBuildOrder.rbegin(); itr != mBuildOrder.rend(); itr++){
-            ret.push_back((*itr)->Data());
+        for (auto itr = mBuildOrder.begin(); itr != mBuildOrder.end(); itr++){
+            ret.emplace_back((*itr)->Data());
         }
         return ret;
     }
 
     void execute(const RkUtil::Graph_Ptr<T>& graph) override{
-        //std::cout << "RecursiveSolver in action!!" << std::endl;
+        std::cout << "RecursiveSolver in action!!" << std::endl;
         std::tie(mIsCyclic, mBuildOrder) = isCyclic(graph);
     }
 
@@ -451,28 +453,26 @@ int main(int argc, char *argv[])
     }
 
     const std::string_view input_file(argv[1]);
-    if (const RkUtil::Graph_Ptr<std::string> graph = InputParser::GenerateGraphFromFile(input_file, false);
+    if (const RkUtil::Graph_Ptr<std::string> graph = InputParser::GenerateGraphFromFile(input_file);
         graph && graph->isValid()){
 
-        int t = 0;
-        while(++t < 2/*3*/){
-
-            std::unique_ptr<Command<std::string>> c;
-            if (t == 1){
-                c.reset(new RecursiveSolver<std::string>());
-            }else{
-                c.reset(new IterativeSolver<std::string>());
-            }
-            c->execute(graph);
-            {
-                // API 1
-                std::cout << "Was there any cyclic dependency ? : " << std::boolalpha << c->API_1() << std::endl;
-                // API 2
-                std::cout << "A build order for the products : ";
-                const auto& v = c->API_2();
-                std::copy(v.begin(), v.end(), std::ostream_iterator<std::string>(std::cout, " "));
-                std::cout << std::endl;
-            }
+        const int MAX_HW_STACK_DEPTH = 500;
+        std::size_t max_depth_of_graph = graph->getmVertexes().size() + graph->getmEdges().size();
+        std::unique_ptr<Command<std::string>> c;
+        if (max_depth_of_graph > MAX_HW_STACK_DEPTH){
+            c.reset(new IterativeSolver<std::string>());
+        }else{
+            c.reset(new RecursiveSolver<std::string>());
+        }
+        c->execute(graph);
+        {
+            // API 1
+            std::cout << "Was there any cyclic dependency ? : " << std::boolalpha << c->API_1() << std::endl;
+            // API 2
+            std::cout << "A build order for the products : ";
+            const auto& v = c->API_2();
+            std::copy(v.begin(), v.end(), std::ostream_iterator<std::string>(std::cout, " "));
+            std::cout << std::endl;
         }
     }
 
