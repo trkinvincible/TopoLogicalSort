@@ -25,20 +25,16 @@
 //}
 namespace RkUtil{
 
-std::vector<std::string> Split(const std::string& input, const std::string& delimiter){
+std::vector<std::string> Split(const std::string& input, const char delimiter){
 
-    std::vector<std::string> ret;
-    std::stringstream ss;
-    ss << "[^\\" << delimiter << "]+";
-    std::regex r(ss.str());
-
-    for (std::sregex_iterator i = std::sregex_iterator(input.begin(), input.end(), r);
-         i != std::sregex_iterator(); ++i){
-        std::smatch m = *i;
-        ret.push_back(m.str());
+    std::vector<std::string> result;
+    std::stringstream ss(input);
+    std::string s;
+    while (std::getline(ss, s, delimiter)) {
+        result.push_back(s);
     }
 
-    return ret;
+    return result;
 }
 
 #define GETTER(OBJ) public:\
@@ -411,7 +407,7 @@ public:
                     if (++c == 1){
                         noOfEntries = std::atoi(line.data());
                     }else{
-                        const std::vector<std::string>& v = RkUtil::Split(line, " ");
+                        const std::vector<std::string>& v = RkUtil::Split(line, ' ');
                         if (noOfEntries == -1)
                             throw c;
                         if (!graph)
