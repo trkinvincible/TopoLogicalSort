@@ -37,11 +37,15 @@
 #include <map>
 #include <sstream>
 
+// FlashLogger
+#include "FLogManager.h"
+#include <config.h>
+
 // RkUtil [START]
 //void* operator new(size_t size)
 //{
 //    static std::size_t c;
-//    std::cout<< "Alocating: " << ++c << " times" << std::endl;
+//    FLOG_INFO<< "Alocating: " << ++c << " times";
 //    void * p = ::operator new(size);
 //    return p;
 //}
@@ -243,7 +247,7 @@ public:
     }
 
     void execute(const RkUtil::Graph_Ptr<T>& graph) override {
-        std::cout << "IterativeSolver in action!!" << std::endl;
+        FLOG_INFO << "IterativeSolver in action!!";
         std::tie(mIsCyclic, mBuildOrder) = isCyclic(graph);
     }
 
@@ -349,7 +353,7 @@ public:
     }
 
     void execute(const RkUtil::Graph_Ptr<T>& graph) override{
-        std::cout << "RecursiveSolver in action!!" << std::endl;
+        FLOG_INFO << "RecursiveSolver in action!!";
         std::tie(mIsCyclic, mBuildOrder) = isCyclic(graph);
     }
 
@@ -417,7 +421,7 @@ public:
         RkUtil::Graph_Ptr<std::string> graph;
         std::ifstream input(filename.data());
         if (!input){
-            std::cerr << "inpuut file not found" << std::endl;
+            std::cerr << "inpuut file not found";
             return graph;
         }
 
@@ -448,7 +452,7 @@ public:
                 }
             }
             auto end = std::chrono::steady_clock::now();
-            //std::cout << "Time to complete graph construction: " << (end - start)/1s << "s." << std::endl;
+            //FLOG_INFO << "Time to complete graph construction: " << (end - start)/1s << "s.";
         }catch(int c){
             std::cerr << "Input failed at line: " << c;
             input.close();
@@ -461,10 +465,38 @@ public:
     }
 };
 
+LEVEL FLogManager::mCurrentLevel = LEVEL::CRIT;
+GRANULARITY FLogManager::mCurrentGranularity = GRANULARITY::FULL;
+
 int main(int argc, char *argv[])
 {    
+    std::unique_ptr<FLogConfig> config = std::make_unique<FLogConfig>([](flashlogger_config_data &d, boost::program_options::options_description &desc){
+            desc.add_options()
+                    ("FlashLogger.size_of_ring_buffer", boost::program_options::value<short>(&d.size_of_ring_buffer)->default_value(50), "size of buffer to log")
+                    ("FlashLogger.log_file_path", boost::program_options::value<std::string>(&d.log_file_path)->default_value("../"), "log file path")
+                    ("FlashLogger.log_file_name", boost::program_options::value<std::string>(&d.log_file_name)->default_value("flashlog.txt"), "log file name")
+                    ("FlashLogger.run_test", boost::program_options::value<short>(&d.run_test)->default_value(1), "choose to run test")
+                    ("FlashLogger.server_ip", boost::program_options::value<std::string>(&d.server_ip)->default_value("localhost"), "microservice server IP")
+                    ("FlashLogger.server_port", boost::program_options::value<std::string>(&d.server_port)->default_value("50051"), "microservice server port");
+        });
+
+    try {
+
+        config->parse(argc, argv);
+    }
+    catch(std::exception const& e) {
+
+        std::cout << e.what();
+        return 0;
+    }
+
+    FLogManager::globalInstance(std::move(config)).SetCopyrightAndStartService(s_copyright);
+
+    FLogManager::globalInstance().SetLogGranularity("BASIC");
+    FLogManager::globalInstance().SetLogLevel("INFO");
+
     if(argc < 1){
-        std::cerr << "Usage: ./solution <absolutepath/filename.txt> " << std::endl;
+        std::cerr << "Usage: ./solution <absolutepath/filename.txt> ";
         return 0;
     }
 
@@ -483,12 +515,14 @@ int main(int argc, char *argv[])
         c->execute(graph);
         {
             // API 1
-            std::cout << "Was there any cyclic dependency ? : " << std::boolalpha << c->API_1() << std::endl;
+            FLOG_INFO << "Was there any cyclic dependency ? : " << c->API_1();
             // API 2
-            std::cout << "A build order for the products : ";
+            FLOG_INFO << "A build order for the products : ";
             const auto& v = c->API_2();
+            for (const auto& i : v){
+                FLOG_INFO << i.data() << " ";
+            }
             std::copy(v.begin(), v.end(), std::ostream_iterator<std::string>(std::cout, " "));
-            std::cout << std::endl;
         }
     }
 
