@@ -74,8 +74,9 @@ struct GraphObject{
 
 template<>
 struct GraphObject<std::string>{
-    GraphObject(const std::string& d) noexcept
-        :data(d){ }
+    explicit GraphObject(std::string&& d) noexcept{
+        d = std::exchange(data, d);
+    }
 
     bool operator==(const GraphObject<std::string>& rhs) const{
         return (this->data == rhs.data);
@@ -102,13 +103,15 @@ template<typename T>
 class Graph{
 
 public:
-    void AddNode(const T&& node, const std::vector<T>&& neighbours){
+    // node is copy constructed here so move this memory to Vertex ownership. it dosent matter
+    // caller of this function did move or copy. from here vertex take care of this memory.
+    void AddNode(T node, std::vector<T> neighbours){
         for (auto& i : neighbours){
             addEdge(node, i);
         }
     }
 
-    void addEdge(const T& n1, const T& n2){
+    void addEdge(T& n1, T& n2){
         auto find_node = [this](const auto& node){
             return std::find(mVertexes.begin(), mVertexes.end(), node);
         };
@@ -152,11 +155,11 @@ class Vertex {
     using VertecesList = std::unordered_set<Vertex_Ptr<T>>;
 
 public:
-    Vertex(const T& data):mData(data) {    }
+    Vertex(T&& data):mData(std::move(data)) {    }
 
-    static Vertex_Ptr<T> GetNewVertex(const T& data) noexcept{
+    static Vertex_Ptr<T> GetNewVertex(T& data) noexcept{
         // make_shared have strong exception safety.
-        return std::make_shared<Vertex>(data);
+        return std::make_shared<Vertex>(std::move(data));
     }
 
     // Vertex is always identified by its data
@@ -433,7 +436,7 @@ public:
                     if (++c == 1){
                         noOfEntries = std::atoi(line.data());
                     }else{
-                        const std::vector<std::string>& v = RkUtil::Split(line, ' ');
+                        std::vector<std::string> v = RkUtil::Split(line, ' ');
                         if (noOfEntries == -1)
                             throw c;
                         if (!graph)
@@ -441,13 +444,17 @@ public:
 
                         auto neighboursstart = std::next(std::begin(v));
                         if (recursive_method){
-                            std::vector<std::string> neighbours{neighboursstart, std::end(v)};
+                            std::vector<std::string> neighbours;
+                            neighbours.resize(v.size() - 1);
+                            std::swap_ranges(v.begin()+1, v.end(), neighbours.begin());
                             graph->AddNode(std::move(v[0]), std::move(neighbours));
-                        }else{
+                            for (const auto& i : v)
+                                std::cout << i << std::endl;
+                        }/*else{
                             for (auto itr = neighboursstart; itr != v.end(); itr++){
                                 graph->addEdge(*itr, v[0]);
                             }
-                        }
+                        }*/
                     }
                 }
             }
